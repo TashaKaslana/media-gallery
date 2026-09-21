@@ -53,7 +53,8 @@ export default function GalleryPage() {
     const totalSize = items.reduce((sum, item) => sum + item.size, 0)
     const videos = items.filter((item) => item.kind === 'video').length
     const images = items.filter((item) => item.kind === 'image').length
-    return { totalSize, videos, images }
+    const audios = items.filter((item) => item.kind === 'audio').length
+    return { totalSize, videos, images, audios }
   }, [items])
 
   const filtered = useMemo(() => {
@@ -214,9 +215,11 @@ export default function GalleryPage() {
             <StorageBar label="Glacier" value={10} />
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        {/* Đã tách thành 3 cột cân đối cho Ảnh, Video và Âm thanh */}
+        <div className="grid grid-cols-3 gap-2">
           <MiniStat label="Ảnh" value={stats.images} />
           <MiniStat label="Video" value={stats.videos} />
+          <MiniStat label="Âm thanh" value={stats.audios} />
         </div>
       </aside>
 
@@ -285,9 +288,9 @@ function StorageBar({ label, value }: { label: string; value: number }) {
 
 function MiniStat({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-xl border bg-card p-4 shadow-sm">
-      <p className="text-2xl font-semibold">{value}</p>
-      <p className="text-xs text-muted-foreground">{label}</p>
+    <div className="rounded-xl border bg-card p-3 text-center shadow-sm">
+      <p className="text-xl font-semibold">{value}</p>
+      <p className="text-[11px] text-muted-foreground">{label}</p>
     </div>
   )
 }

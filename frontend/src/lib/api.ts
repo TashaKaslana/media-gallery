@@ -12,7 +12,7 @@ interface StoredMediaRecord {
   kind: MediaKind
   size: number
   createdAt: string
-  expiresAt: number // Thêm thời gian hết hạn (5 phút)
+  expiresAt: number // Thời gian hết hạn (5 phút)
   blob: Blob
 }
 
@@ -58,9 +58,24 @@ function withStore<T>(
 
 function getKind(file: File | Blob): MediaKind {
   const type = file.type || ''
-  if (type.startsWith('image/')) return 'image'
-  if (type.startsWith('video/')) return 'video'
+  const name = ('name' in file ? file.name : '').toLowerCase()
+
+  // 1. Kiểm tra chính xác theo phần mở rộng của tên tệp trước (Đảm bảo bắt đúng mp3, wav, v.v.)
+  if (name.endsWith('.mp3') || name.endsWith('.wav') || name.endsWith('.ogg') || name.endsWith('.m4a') || name.endsWith('.flac')) {
+    return 'audio'
+  }
+  if (name.endsWith('.mp4') || name.endsWith('.mov') || name.endsWith('.avi') || name.endsWith('.mkv') || name.endsWith('.webm')) {
+    return 'video'
+  }
+  if (name.endsWith('.jpg') || name.endsWith('.jpeg') || name.endsWith('.png') || name.endsWith('.gif') || name.endsWith('.webp') || name.endsWith('.svg')) {
+    return 'image'
+  }
+
+  // 2. Dự phòng kiểm tra theo MIME type của trình duyệt
   if (type.startsWith('audio/')) return 'audio'
+  if (type.startsWith('video/')) return 'video'
+  if (type.startsWith('image/')) return 'image'
+
   return 'file'
 }
 
@@ -164,7 +179,7 @@ export async function uploadFiles(
         kind: getKind(file),
         size: file.size,
         createdAt: new Date().toISOString(),
-        expiresAt: expiresAtTime, // Lưu mốc thời gian hết hạn 5 phút
+        expiresAt: expiresAtTime,
         blob: file,
       }
       saved.push(record)
