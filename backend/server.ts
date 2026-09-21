@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { type NextFunction, type Request, type Response } from 'express';
 import multer from 'multer';
 import cors from 'cors';
 import path from 'node:path';
@@ -7,9 +7,9 @@ import { createReadStream } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { v4 as uuidv4 } from 'uuid';
 import sharp from 'sharp';
-import { fileTypeFromFile } from 'file-type';
+import { fileTypeFromFile, type FileTypeResult } from 'file-type';
 import mimeTypes from 'mime-types';
-import { extractMetadata, MIME_WHITELIST, EXT_BY_MIME } from './metadata.js';
+import { extractMetadata, MIME_WHITELIST, EXT_BY_MIME, type ExtractedMetadata, type MediaKind } from './metadata.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
@@ -20,9 +20,33 @@ const PORT = process.env.PORT || 3000;
 const CORS_ORIGIN = process.env.CORS_ORIGIN;
 const THUMB_SIZE = 480;
 
-let index = [];
+interface MediaRecord {
+  id: string;
+  name: string;
+  storedName: string;
+  mimeType: string;
+  kind: MediaKind;
+  size: number;
+  createdAt: string;
+  metadata: ExtractedMetadata;
+}
 
-async function ensureDirs() {
+interface PublicMediaRecord {
+  id: string;
+  name: string;
+  mimeType: string;
+  kind: MediaKind;
+  size: number;
+  createdAt: string;
+  thumbnailable: boolean;
+  metadata: ExtractedMetadata;
+  fileUrl: string;
+  thumbnailUrl: string;
+}
+
+let index: MediaRecord[] = [];
+
+async function ensureDirs(): Promise<void> {
   await Promise.all([
     fs.mkdir(UPLOAD_DIR, { recursive: true }),
     fs.mkdir(THUMB_DIR, { recursive: true }),
@@ -30,25 +54,24 @@ async function ensureDirs() {
   ]);
 }
 
-async function loadIndex() {
+async function loadIndex(): Promise<void> {
   try {
-    index = JSON.parse(await fs.readFile(INDEX_FILE, 'utf8'));
+    index = JSON.parse(await fs.readFile(INDEX_FILE, 'utf8')) as MediaRecord[];
   } catch {
     index = [];
   }
 }
 
-async function saveIndex() {
+async function saveIndex(): Promise<void> {
   await fs.mkdir(DATA_DIR, { recursive: true });
   await fs.writeFile(INDEX_FILE, JSON.stringify(index, null, 2), 'utf8');
 }
 
-function findRecord(id) {
+function findRecord(id: string): MediaRecord | undefined {
   return index.find((r) => r.id === id);
 }
 
-function publicRecord(record) {
-  const filePath = path.join(UPLOAD_DIR, record.storedName);
+function publicRecord(record: MediaRecord): PublicMediaRecord {
   return {
     id: record.id,
     name: record.name,
@@ -63,8 +86,8 @@ function publicRecord(record) {
   };
 }
 
-async function reconcileIndex() {
-  const stored = await fs.readdir(UPLOAD_DIR).catch(() => []);
+async function reconcileIndex(): Promise<void> {
+  const stored = await fs.readdir(UPLOAD_DIR).catch((): string[] => []);
   const stale = index.filter((r) => !stored.includes(r.storedName));
   if (stale.length) {
     index = index.filter((r) => stored.includes(r.storedName));
@@ -77,14 +100,14 @@ async function reconcileIndex() {
 
 const upload = multer({
   storage: multer.diskStorage({
-    destination: (req, file, cb) => cb(null, UPLOAD_DIR),
-    filename: (req, file, cb) => {
+    destination: (_req, _file, cb) => cb(null, UPLOAD_DIR),
+    filename: (_req, file, cb) => {
       const ext = EXT_BY_MIME[file.mimetype] || path.extname(file.originalname) || '';
       cb(null, `${uuidv4()}${ext}`);
     },
   }),
   limits: { fileSize: 1024 * 1024 * 1024, files: 20 },
-  fileFilter: (req, file, cb) => {
+  fileFilter: (_req, file, cb) => {
     if (MIME_WHITELIST.has(file.mimetype)) return cb(null, true);
     const extType = mimeTypes.lookup(file.originalname);
     if (extType && MIME_WHITELIST.has(extType)) return cb(null, true);
@@ -102,7 +125,7 @@ app.use(express.json());
 
 app.get('/api/media', async (req, res) => {
   await reconcileIndex();
-  const items = [...index].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const items = [...index].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   res.json(items.map(publicRecord));
 });
 
@@ -120,7 +143,7 @@ app.get('/api/media/:id/file', (req, res) => {
   res.setHeader('Content-Length', String(record.size));
   res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
   res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(record.name)}`);
-  createReadStream(filePath).on('error', (err) => {
+  createReadStream(filePath).on('error', () => {
     if (!res.headersSent) res.status(500).json({ error: 'Failed to read file' });
   }).pipe(res);
 });
@@ -139,7 +162,7 @@ app.get('/api/media/:id/thumbnail', async (req, res) => {
         .resize(THUMB_SIZE, THUMB_SIZE, { fit: 'cover', withoutEnlargement: true })
         .jpeg({ quality: 82 })
         .toFile(thumbPath);
-    } catch (err) {
+    } catch {
       return res.status(422).json({ error: 'Thumbnail generation failed' });
     }
   }
@@ -151,16 +174,16 @@ app.get('/api/media/:id/thumbnail', async (req, res) => {
 });
 
 app.post('/api/upload', upload.array('files', 20), async (req, res) => {
-  const files = req.files || [];
-  const results = [];
+  const files = (req.files as Express.Multer.File[] | undefined) ?? [];
+  const results: PublicMediaRecord[] = [];
   let skipped = 0;
   for (const file of files) {
     const raw = path.join(UPLOAD_DIR, file.filename);
     let provided = MIME_WHITELIST.has(file.mimetype) ? file.mimetype : null;
-    let mime = provided;
-    let sniffed = null;
+    let mime: string | null = provided;
+    let sniffed: FileTypeResult | null = null;
     if (!mime) {
-      sniffed = await fileTypeFromFile(raw).catch(() => null);
+      sniffed = (await fileTypeFromFile(raw).catch(() => null)) ?? null;
       if (sniffed && MIME_WHITELIST.has(sniffed.mime)) mime = sniffed.mime;
     }
     if (!mime) {
@@ -180,7 +203,7 @@ app.post('/api/upload', upload.array('files', 20), async (req, res) => {
     const now = new Date().toISOString();
     const id = uuidv4();
     const metaResult = await extractMetadata(path.join(UPLOAD_DIR, file.filename), mime, file.size);
-    const record = {
+    const record: MediaRecord = {
       id,
       name: file.originalname,
       storedName: file.filename,
@@ -211,6 +234,7 @@ app.delete('/api/media/:id', async (req, res) => {
   const recordIndex = index.findIndex((r) => r.id === req.params.id);
   if (recordIndex === -1) return res.status(404).json({ error: 'Media not found' });
   const [record] = index.splice(recordIndex, 1);
+  if (!record) return res.status(404).json({ error: 'Media not found' });
   await Promise.all([
     fs.rm(path.join(UPLOAD_DIR, record.storedName), { force: true }),
     fs.rm(path.join(THUMB_DIR, `${record.id}.jpg`), { force: true }),
@@ -223,12 +247,15 @@ app.use((req, res) => {
   res.status(404).json({ error: 'Not found' });
 });
 
-app.use((err, req, res, next) => {
+app.use((err: unknown, req: Request, res: Response, next: NextFunction) => {
   if (err instanceof multer.MulterError) {
     return res.status(400).json({ error: `Upload error: ${err.message}` });
   }
-  if (err) {
+  if (err instanceof Error) {
     return res.status(400).json({ error: err.message || 'Server error' });
+  }
+  if (err) {
+    return res.status(400).json({ error: 'Server error' });
   }
   next();
 });

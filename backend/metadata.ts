@@ -3,7 +3,7 @@ import exifr from 'exifr';
 import sharp from 'sharp';
 import { parseFile } from 'music-metadata';
 
-export const MIME_WHITELIST = new Set([
+export const MIME_WHITELIST: Set<string> = new Set([
   'image/jpeg',
   'image/png',
   'image/gif',
@@ -31,7 +31,7 @@ export const MIME_WHITELIST = new Set([
   'audio/webm',
 ]);
 
-export const EXT_BY_MIME = {
+export const EXT_BY_MIME: Record<string, string> = {
   'image/jpeg': '.jpg',
   'image/png': '.png',
   'image/gif': '.gif',
@@ -59,37 +59,56 @@ export const EXT_BY_MIME = {
   'audio/webm': '.weba',
 };
 
-function kindOf(mime) {
+export type MediaKind = 'image' | 'video' | 'audio' | 'file';
+
+export interface MetadataSummary {
+  [key: string]: unknown;
+}
+
+export interface MetadataDetail {
+  label: string;
+  value: string;
+}
+
+export interface ExtractedMetadata {
+  kind: MediaKind;
+  summary: MetadataSummary;
+  details: MetadataDetail[];
+}
+
+function kindOf(mime: string): MediaKind {
   if (mime.startsWith('image/')) return 'image';
   if (mime.startsWith('video/')) return 'video';
   if (mime.startsWith('audio/')) return 'audio';
   return 'file';
 }
 
-function str(v) {
+function str(v: unknown): string | null {
   if (v === null || v === undefined || v === '') return null;
   if (typeof v === 'object') {
     if (Array.isArray(v)) {
-      const parts = v.map(str).filter(Boolean);
+      const parts = v.map(str).filter((x): x is string => x !== null);
       return parts.length ? parts.join(', ') : null;
     }
-    if (v.numerator !== undefined && v.denominator !== undefined) {
-      const n = v.numerator / v.denominator;
+    if ('numerator' in v && 'denominator' in v) {
+      const { numerator, denominator } = v as { numerator: number; denominator: number };
+      const n = numerator / denominator;
       return Number.isInteger(n) ? String(n) : String(n).slice(0, 8);
     }
     if ('no' in v) {
       const no = str(v.no);
-      const of = str(v.of);
+      const of = str('of' in v ? v.of : null);
       if (!no && !of) return null;
-      return [no, of].filter(Boolean).join('/');
+      return [no, of].filter((x): x is string => x !== null).join('/');
     }
-    if (typeof v.toISOString === 'function') return v.toISOString();
+    const maybeIso = (v as { toISOString?: unknown }).toISOString;
+    if (typeof maybeIso === 'function') return maybeIso.call(v);
     return JSON.stringify(v);
   }
   return String(v);
 }
 
-function formatCoord(decimal) {
+function formatCoord(decimal: number): string | null {
   if (typeof decimal !== 'number' || !Number.isFinite(decimal)) return null;
   const abs = Math.abs(decimal);
   const deg = Math.floor(abs);
@@ -99,17 +118,17 @@ function formatCoord(decimal) {
   return `${deg}° ${min}' ${sec}"`;
 }
 
-function formatDuration(seconds) {
+function formatDuration(seconds: number): string | null {
   if (typeof seconds !== 'number' || !Number.isFinite(seconds)) return null;
   const s = Math.round(seconds);
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
   const sec = s % 60;
-  const pad = (n) => String(n).padStart(2, '0');
+  const pad = (n: number): string => String(n).padStart(2, '0');
   return h > 0 ? `${pad(h)}:${pad(m)}:${pad(sec)}` : `${pad(m)}:${pad(sec)}`;
 }
 
-function formatBytes(bytes) {
+function formatBytes(bytes: number): string | null {
   if (typeof bytes !== 'number' || !Number.isFinite(bytes)) return null;
   if (bytes < 1024) return `${bytes} B`;
   const units = ['KB', 'MB', 'GB', 'TB'];
@@ -119,20 +138,21 @@ function formatBytes(bytes) {
     value /= 1024;
     i += 1;
   }
-  return `${value.toFixed(value >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
+  const unit = units[i] ?? '';
+  return `${value.toFixed(value >= 10 || i === 0 ? 0 : 1)} ${unit}`;
 }
 
-async function extractImageMetadata(filePath) {
-  const details = [];
-  const summary = {};
+async function extractImageMetadata(filePath: string): Promise<ExtractedMetadata> {
+  const details: MetadataDetail[] = [];
+  const summary: MetadataSummary = {};
 
-  const target = [
+  const target: string[] = [
     'Make', 'Model', 'LensModel', 'FNumber', 'ExposureTime', 'ISOSpeedRatings',
     'ISO', 'FocalLength', 'FocalLengthIn35mmFormat', 'DateTimeOriginal', 'CreateDate',
     'Latitude', 'Longitude', 'ExposureProgram', 'ExposureBiasValue', 'WhiteBalance',
     'Software',
   ];
-  const exif = await exifr.parse(filePath, target).catch(() => null);
+  const exif = (await exifr.parse(filePath, target).catch(() => null)) as Record<string, any> | null;
 
   const sharpMeta = await sharp(filePath).metadata().catch(() => null);
   if (sharpMeta) {
@@ -147,12 +167,12 @@ async function extractImageMetadata(filePath) {
   }
 
   if (exif) {
-    const camera = [str(exif.Make), str(exif.Model)].filter(Boolean).join(' ');
+    const camera = [str(exif.Make), str(exif.Model)].filter((x): x is string => Boolean(x)).join(' ');
     if (camera) {
       summary.camera = camera;
       details.push({ label: 'Camera', value: camera });
     }
-    for (const [label, key] of [
+    const fields: Array<[string, string]> = [
       ['Lens', 'LensModel'],
       ['Focal length', 'FocalLength'],
       ['Aperture', 'FNumber'],
@@ -160,9 +180,11 @@ async function extractImageMetadata(filePath) {
       ['ISO', 'ISOSpeedRatings'],
       ['Date taken', 'DateTimeOriginal'],
       ['Software', 'Software'],
-    ]) {
-      if (exif[key] !== undefined && str(exif[key]) !== null) {
-        details.push({ label, value: str(exif[key]) });
+    ];
+    for (const [label, key] of fields) {
+      const value = str(exif[key]);
+      if (exif[key] !== undefined && value !== null) {
+        details.push({ label, value });
       }
     }
     if (exif.Latitude !== undefined && exif.Longitude !== undefined) {
@@ -177,20 +199,20 @@ async function extractImageMetadata(filePath) {
   return { kind: 'image', summary, details };
 }
 
-async function extractMediaMetadata(filePath, mime) {
-  const meta = await parseFile(filePath, { skipCovers: true }).catch(() => null);
-  const details = [];
-  const summary = {};
+async function extractMediaMetadata(filePath: string, mime: string): Promise<ExtractedMetadata> {
   const kind = kindOf(mime);
-  const add = (label, value) => {
+  const meta = await parseFile(filePath, { skipCovers: true }).catch(() => null);
+  const details: MetadataDetail[] = [];
+  const summary: MetadataSummary = {};
+  const add = (label: string, value: unknown): void => {
     const s = str(value);
     if (s !== null && s !== '') details.push({ label, value: s });
   };
 
   if (!meta) return { kind, summary, details };
 
-  const fmt = meta.format || {};
-  const common = meta.common || {};
+  const fmt = meta.format;
+  const common = meta.common;
 
   if (common.title && common.title !== path.basename(filePath)) {
     summary.title = common.title;
@@ -202,8 +224,8 @@ async function extractMediaMetadata(filePath, mime) {
   add('Year', common.year);
   add('Genre', common.genre);
   add('Track', common.track);
-  add('Comment', common.comment);
-  add('Composer', common.composer);
+  add('Comment', common.comment?.map((c) => c.text ?? c.descriptor ?? '').join(', '));
+  add('Composer', common.composer?.join(', '));
   if (common.picture && common.picture.length) {
     details.push({ label: 'Cover art', value: 'Yes' });
   }
@@ -214,8 +236,9 @@ async function extractMediaMetadata(filePath, mime) {
   }
   add('Container', fmt.container);
   add('Codec', fmt.codec);
-  add('Format', fmt.dataFormat);
-  add('Codec profile', fmt.codecProfile);
+  if (fmt.codecProfile) {
+    add('Codec profile', fmt.codecProfile);
+  }
   if (fmt.bitrate) {
     summary.bitrate = fmt.bitrate;
     add('Bitrate', `${formatBytes(fmt.bitrate)}/s`);
@@ -223,57 +246,50 @@ async function extractMediaMetadata(filePath, mime) {
   add('Sample rate', fmt.sampleRate ? `${str(fmt.sampleRate)} Hz` : null);
   add('Channels', fmt.numberOfChannels);
 
-  if (fmt.audio) {
-    const audio = fmt.audio;
-    if (audio.length) {
-      const track = audio[0];
-      add('Audio format', track.dataFormat);
-      add('Audio codec', track.codec);
-      add('Audio sample rate', track.sampleRate ? `${str(track.sampleRate)} Hz` : null);
-      add('Audio channels', track.numberOfChannels);
-      add('Audio bitrate', track.bitrate ? `${formatBytes(track.bitrate)}/s` : null);
-    } else {
-      add('Audio format', audio.dataFormat);
+  for (const track of fmt.trackInfo) {
+    if (track.audio) {
+      const audio = track.audio;
+      add('Audio format', track.codecName);
+      add('Audio sample rate', audio.samplingFrequency ? `${str(audio.samplingFrequency)} Hz` : null);
+      add('Audio channels', audio.channels);
+      add('Audio bit depth', audio.bitDepth ? `${str(audio.bitDepth)} bit` : null);
     }
-  }
-
-  if (fmt.video) {
-    const video = Array.isArray(fmt.video) ? fmt.video[0] : fmt.video;
-    if (video) {
-      if (video.width && video.height) {
-        summary.width = video.width;
-        summary.height = video.height;
-        add('Resolution', `${video.width} × ${video.height}`);
+    if (track.video) {
+      const video = track.video;
+      const width = video.displayWidth ?? video.pixelWidth;
+      const height = video.displayHeight ?? video.pixelHeight;
+      if (width && height) {
+        summary.width = width;
+        summary.height = height;
+        add('Resolution', `${width} × ${height}`);
       }
-      add('Frame rate', video.frameRate ? `${str(video.frameRate)} fps` : null);
-      add('Video codec', video.codec);
-      add('Video bitrate', video.bitrate ? `${formatBytes(video.bitrate)}/s` : null);
+      add('Video codec', track.codecName);
     }
   }
 
-  for (const [label, key] of [
+  const nativeFields: Array<[string, string]> = [
     ['Recorded', 'recordingdate'],
     ['Created', 'creationdate'],
     ['Encoder', 'encodedby'],
     ['Website', 'website'],
-  ]) {
-    const v = meta.native && meta.native[key];
-    if (v) add(label, str(v));
+  ];
+  for (const [label, key] of nativeFields) {
+    const tags = meta.native[key];
+    if (tags?.length) {
+      add(label, tags.map((t) => str(t.value)).filter((x): x is string => x !== null).join(', '));
+    }
   }
 
   return { kind, summary, details };
 }
 
-export async function extractMetadata(filePath, mime, sizeBytes) {
+export async function extractMetadata(filePath: string, mime: string, sizeBytes?: number): Promise<ExtractedMetadata> {
   const kind = kindOf(mime);
-  const base = { kind, summary: {}, details: [] };
+  const base: ExtractedMetadata = { kind, summary: {}, details: [] };
   try {
-    let extracted;
-    if (kind === 'image') {
-      extracted = await extractImageMetadata(filePath);
-    } else {
-      extracted = await extractMediaMetadata(filePath, mime);
-    }
+    const extracted = kind === 'image'
+      ? await extractImageMetadata(filePath)
+      : await extractMediaMetadata(filePath, mime);
     base.summary = { ...base.summary, ...extracted.summary };
     base.details = extracted.details;
   } catch {
