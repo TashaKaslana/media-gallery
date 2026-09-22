@@ -12,4 +12,12 @@ datasource db {
   provider = "postgresql"
 }
 
-model ()
+model Storage {
+  key String @id @default(uuid())
+  name String
+  size Int
+  type String
+  status String
+  createdAt DateTime @default(now())
+  lastModifiedAt DateTime @updatedAt
+}
