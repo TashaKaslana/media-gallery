@@ -1,6 +1,7 @@
 import { DeleteObjectCommand, GetObjectCommand, ListObjectsV2Command, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { s3 } from "../core/s3_client.js";
+import type { S3StorageItem } from "../types/types.js";
 
 export async function uploadFile(
     key: string,
@@ -63,7 +64,7 @@ export const deleteStorageItem = async (
     await s3.send(command)
 }
 
-export const getStorageList = async () => {
+export const getStorageList = async (keyList: string[]): Promise<S3StorageItem[] | null> => {
     const expireDuration = 60 * 5
 
     const keysRetrivalCommand = new ListObjectsV2Command({
@@ -76,7 +77,11 @@ export const getStorageList = async () => {
         return null
     }
 
-    return Promise.all([
+    if (keyList) {
+        objects.filter(obj => obj.Key && keyList.includes(obj.Key))
+    }
+
+    return await Promise.all(
         objects
             .filter(obj => obj.Key)
             .map(async (object) => {
@@ -97,8 +102,8 @@ export const getStorageList = async () => {
                     key: key,
                     url: url,
                     size: object.Size,
-                    lastModified: object.LastModified
+                    lastModifiedAt: object.LastModified
                 }
             })
-    ])
+    )
 }
