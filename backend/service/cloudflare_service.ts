@@ -1,4 +1,9 @@
-import { DeleteObjectCommand, GetObjectCommand, ListObjectsV2Command, PutObjectCommand } from "@aws-sdk/client-s3";
+import {
+    DeleteObjectCommand,
+    GetObjectCommand,
+    ListObjectsV2Command,
+    PutObjectCommand,
+} from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { s3 } from "../core/s3_client.js";
 import type { S3StorageItem } from "../types/types.js";
@@ -64,7 +69,11 @@ export const deleteStorageItem = async (
     await s3.send(command)
 }
 
-export const getStorageList = async (keyList: string[]): Promise<S3StorageItem[] | null> => {
+export const getStorageList = async (keyList: string[]): Promise<S3StorageItem[]> => {
+    if (keyList.length === 0) {
+        return [];
+    }
+
     const expireDuration = 60 * 5
 
     const keysRetrivalCommand = new ListObjectsV2Command({
@@ -74,36 +83,40 @@ export const getStorageList = async (keyList: string[]): Promise<S3StorageItem[]
     const objects = (await s3.send(keysRetrivalCommand)).Contents
 
     if (!objects) {
-        return null
+        return []
     }
 
-    if (keyList) {
-        objects.filter(obj => obj.Key && keyList.includes(obj.Key))
-    }
+    const matchingObjects = objects.filter(obj => obj.Key !== undefined && keyList.includes(obj.Key))
 
     return await Promise.all(
-        objects
-            .filter(obj => obj.Key)
-            .map(async (object) => {
-                const key = object.Key!;
+        matchingObjects.map(async (object) => {
+            const key = object.Key!;
 
-                const preSignedCommand = new GetObjectCommand({
-                    Bucket: process.env.R2_BUCKET_NAME,
-                    Key: key
-                })
-
-                const url = await getSignedUrl(
-                    s3,
-                    preSignedCommand, {
-                    expiresIn: expireDuration
-                })
-
-                return {
-                    key: key,
-                    url: url,
-                    size: object.Size,
-                    lastModifiedAt: object.LastModified
-                }
+            const preSignedCommand = new GetObjectCommand({
+                Bucket: process.env.R2_BUCKET_NAME,
+                Key: key
             })
+
+            const url = await getSignedUrl(
+                s3,
+                preSignedCommand, {
+                expiresIn: expireDuration
+            })
+
+            const storageItem: S3StorageItem = {
+                key: key,
+                url: url
+            }
+
+            if (object.Size !== undefined) {
+                storageItem.size = object.Size
+            }
+
+            if (object.LastModified !== undefined) {
+                storageItem.lastModifiedAt = object.LastModified
+            }
+
+            return storageItem
+        })
     )
 }

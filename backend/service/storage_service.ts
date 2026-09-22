@@ -1,46 +1,57 @@
-import { PrismaClient } from "@prisma/client/extension";
+import { PrismaClient } from "../generated/prisma/client.js";
+import { PrismaPg } from "@prisma/adapter-pg";
 import type { StorageItem, StorageItemSummary } from "../types/types.js";
-import { getStorageList } from "./cloudflare_service.js";
+import { deleteStorageItem as deleteS3Object, getStorageList } from "./cloudflare_service.js";
 
-const prisma = new PrismaClient();
+const adapter = new PrismaPg({
+    connectionString: process.env.DATABASE_URL!,
+});
+
+const prisma = new PrismaClient({ adapter });
 
 export const addNewStorageItem = async (item: StorageItem) => {
+    const status = ["active", "archived", "deleted"].includes(item.status) ? item.status : "active";
+
     await prisma.storage.create({
         data: {
             key: item.key,
             name: item.name,
-            size: item.size,
+            size: item.size ?? 0,
             type: item.type,
-            status: "active"
+            status: status
         }
     });
 };
 
-export const getStorageItemList = async (status: string): Promise<StorageItem[] | null> => {
+export const getStorageItemList = async (status: string): Promise<StorageItem[]> => {
     const storageItemSummary: StorageItemSummary[] = await prisma.storage.findMany({
         where: { status: status },
     });
 
-    if (!storageItemSummary) {
-        return null;
-    }    
-
     const urlList = await getStorageList(storageItemSummary.map(item => item.key))
-    const storageItems: StorageItem[] | undefined = urlList?.map((item, index) => {
+
+    return urlList.map((item) => {
         const summary = storageItemSummary.find(storageItem => storageItem.key === item.key);
-        return {
+
+        const storageItem: StorageItem = {
             key: item.key,
             name: summary?.name || "",
-            size: item.size,
             type: summary?.type || "other",
             status: summary?.status || "active",
             url: item.url,
-            createdAt: summary?.createdAt || "",
-            lastModifiedAt: item.lastModifiedAt ? item.lastModifiedAt.toISOString() : undefined
+            createdAt: summary?.createdAt.toISOString() || "",
         };
-    })
 
-    return storageItems || null;
+        if (item.size !== undefined) {
+            storageItem.size = item.size;
+        }
+
+        if (item.lastModifiedAt !== undefined) {
+            storageItem.lastModifiedAt = item.lastModifiedAt.toISOString();
+        }
+
+        return storageItem;
+    });
 }
 
 
@@ -49,4 +60,6 @@ export const deleteStorageItem = async (key: string) => {
         where: { key: key },
         data: { status: "deleted" }
     });
+
+    await deleteS3Object(key);
 }
