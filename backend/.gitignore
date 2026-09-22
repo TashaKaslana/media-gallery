@@ -6,3 +6,4 @@ uploads/
 storage/
 data/media.json
 /dist
+/generated/prisma
