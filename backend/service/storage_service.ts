@@ -1,7 +1,8 @@
+import { randomUUID } from "node:crypto";
 import { PrismaClient } from "../generated/prisma/client.js";
 import { PrismaPg } from "@prisma/adapter-pg";
 import type { StorageItem, StorageItemSummary } from "../types/types.js";
-import { deleteStorageItem as deleteS3Object, getStorageList } from "./cloudflare_service.js";
+import { createUploadUrl, deleteStorageItem as deleteS3Object, getStorageList } from "./cloudflare_service.js";
 
 const adapter = new PrismaPg({
     connectionString: process.env.DATABASE_URL!,
@@ -9,10 +10,21 @@ const adapter = new PrismaPg({
 
 const prisma = new PrismaClient({ adapter });
 
-export const addNewStorageItem = async (item: StorageItem) => {
+const storageKey = (name: string): string => {
+    const ext = name.match(/(\.[a-zA-Z0-9]{1,10})$/)?.[1]?.toLowerCase();
+    return ext ? `${randomUUID()}${ext}` : randomUUID();
+};
+
+export const createPresignedUpload = async (name: string, contentType: string) => {
+    const key = storageKey(name);
+    const url = await createUploadUrl(key, contentType);
+    return { key, url };
+};
+
+export const addNewStorageItem = async (item: StorageItem): Promise<StorageItem> => {
     const status = ["active", "archived", "deleted"].includes(item.status) ? item.status : "active";
 
-    await prisma.storage.create({
+    const created = await prisma.storage.create({
         data: {
             key: item.key,
             name: item.name,
@@ -21,6 +33,17 @@ export const addNewStorageItem = async (item: StorageItem) => {
             status: status
         }
     });
+
+    return {
+        id: created.id,
+        key: created.key,
+        name: created.name,
+        size: created.size,
+        type: created.type,
+        status: created.status,
+        createdAt: created.createdAt.toISOString(),
+        lastModifiedAt: created.lastModifiedAt.toISOString(),
+    };
 };
 
 export const getStorageItemList = async (status: string): Promise<StorageItem[]> => {

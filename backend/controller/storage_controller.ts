@@ -1,6 +1,6 @@
 import type { Request, Response } from 'express';
 import { Prisma } from '../generated/prisma/client.js';
-import { addNewStorageItem, deleteStorageItem, getStorageItemList } from '../service/storage_service.js';
+import { addNewStorageItem, createPresignedUpload, deleteStorageItem, getStorageItemList } from '../service/storage_service.js';
 
 
 const paramToString = (value: string | string[] | undefined): string =>
@@ -22,13 +22,34 @@ export const getListMediaGallery = async (req: Request, res: Response) => {
     }
 }
 
+export const createUploadUrl = async (req: Request, res: Response) => {
+    try {
+        const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
+        const contentType = typeof req.body?.contentType === 'string' ? req.body.contentType.trim() : '';
+
+        if (name === '' || contentType === '') {
+            return res.status(400).json({ error: 'name and contentType are required' });
+        }
+
+        const signed = await createPresignedUpload(name, contentType);
+        res.status(200).json(signed);
+    }
+    catch (err) {
+        res.status(500).json({ error: 'Failed to create upload URL' });
+    }
+}
+
 export const createMediaGallery = async (req: Request, res: Response) => {
     try {
         const { key, name, size, type, status } = req.body;
 
-        await addNewStorageItem({ key, name, size, type, status });
+        if (typeof key !== 'string' || key.trim() === '' || typeof name !== 'string' || name.trim() === '' || typeof type !== 'string' || type.trim() === '') {
+            return res.status(400).json({ error: 'key, name, and type are required' });
+        }
 
-        res.status(201).json({ message: 'Media gallery item created successfully' });
+        const item = await addNewStorageItem({ key: key.trim(), name: name.trim(), size, type: type.trim(), status });
+
+        res.status(201).json(item);
     }
     catch (err) {
         res.status(500).json({ error: 'Failed to create media gallery item' });
