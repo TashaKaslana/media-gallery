@@ -13,7 +13,8 @@ datasource db {
 }
 
 model Storage {
-  key String @id @default(uuid())
+  id String @id @default(uuid())
+  key String @unique
   name String
   size Int
   type String

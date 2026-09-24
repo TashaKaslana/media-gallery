@@ -34,6 +34,7 @@ export const getStorageItemList = async (status: string): Promise<StorageItem[]>
         const summary = storageItemSummary.find(storageItem => storageItem.key === item.key);
 
         const storageItem: StorageItem = {
+            id: summary?.id || "",
             key: item.key,
             name: summary?.name || "",
             type: summary?.type || "other",
@@ -55,11 +56,11 @@ export const getStorageItemList = async (status: string): Promise<StorageItem[]>
 }
 
 
-export const deleteStorageItem = async (key: string) => {
-    await prisma.storage.update({
-        where: { key: key },
+export const deleteStorageItem = async (id: string) => {
+    const item = await prisma.storage.update({
+        where: { id },
         data: { status: "deleted" }
     });
 
-    await deleteS3Object(key);
+    await deleteS3Object(item.key);
 }

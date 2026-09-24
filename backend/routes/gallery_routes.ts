@@ -5,6 +5,6 @@ const galleryRoutes = Router();
 
 galleryRoutes.get('/:statusParam', getListMediaGallery);
 galleryRoutes.post('/', createMediaGallery);
-galleryRoutes.delete('/:key', deleteMediaGallery);
+galleryRoutes.delete('/:id', deleteMediaGallery);
 
 export default galleryRoutes;

@@ -37,13 +37,13 @@ export const createMediaGallery = async (req: Request, res: Response) => {
 
 export const deleteMediaGallery = async (req: Request, res: Response) => {
     try {
-        const key = paramToString(req.params.key);
+        const id = paramToString(req.params.id);
 
-        if (key === '') {
-            return res.status(400).json({ error: 'Invalid key parameter' });
+        if (id === '') {
+            return res.status(400).json({ error: 'Invalid id parameter' });
         }
 
-        await deleteStorageItem(key);
+        await deleteStorageItem(id);
         res.status(200).json({ message: 'Media gallery item deleted successfully' });
     }
     catch (err) {

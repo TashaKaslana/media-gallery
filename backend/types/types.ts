@@ -1,4 +1,5 @@
 export interface StorageItemSummary {
+    id: string;
     key: string;
     name: string;
     size: number;
@@ -9,6 +10,7 @@ export interface StorageItemSummary {
 }
 
 export interface StorageItem {
+    id?: string;
     key: string;
     name: string;
     size?: number;
