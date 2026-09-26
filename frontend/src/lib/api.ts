@@ -1,3 +1,4 @@
+import axios, { isAxiosError } from 'axios'
 import type { MediaItem, MediaKind, UploadResponse } from '@/types'
 
 const API_ORIGIN = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/+$/, '')
@@ -57,25 +58,39 @@ function toMediaItem(item: GalleryItem): MediaItem {
   }
 }
 
-async function readError(res: Response, fallback: string): Promise<string> {
-  try {
-    const body = (await res.json()) as { error?: string }
-    return body.error || fallback
-  } catch {
-    return fallback
+function apiErrorMessage(error: unknown, fallback: string): string {
+  if (isAxiosError(error)) {
+    const data = error.response?.data as { error?: string } | undefined
+    console.error(fallback, {
+      message: error.message,
+      code: error.code,
+      method: error.config?.method,
+      url: error.config?.url,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      response: error.response?.data,
+    })
+    return data?.error || (error.response ? `${fallback} (${error.response.status})` : fallback)
   }
+  console.error(fallback, error)
+  return error instanceof Error ? error.message : fallback
 }
 
 export async function getMedia(): Promise<MediaItem[]> {
-  const res = await fetch(`${API_BASE}/active`)
-  if (!res.ok) throw new Error(await readError(res, `Failed to load media (${res.status})`))
-  const items = (await res.json()) as GalleryItem[]
-  return items.map(toMediaItem)
+  try {
+    const { data } = await axios.get<GalleryItem[]>(`${API_BASE}/active`)
+    return data.map(toMediaItem)
+  } catch (error) {
+    throw new Error(apiErrorMessage(error, 'Failed to load media'))
+  }
 }
 
 export async function deleteMedia(id: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/${id}`, { method: 'DELETE' })
-  if (!res.ok) throw new Error(await readError(res, `Delete failed (${res.status})`))
+  try {
+    await axios.delete(`${API_BASE}/${id}`)
+  } catch (error) {
+    throw new Error(apiErrorMessage(error, 'Delete failed'))
+  }
 }
 
 function putToSignedUrl(
@@ -93,9 +108,20 @@ function putToSignedUrl(
     })
     xhr.addEventListener('load', () => {
       if (xhr.status >= 200 && xhr.status < 300) resolve()
-      else reject(new Error(`Upload failed (${xhr.status})`))
+      else {
+        console.error('Upload failed', {
+          status: xhr.status,
+          statusText: xhr.statusText,
+          url,
+          response: xhr.responseText,
+        })
+        reject(new Error(`Upload failed (${xhr.status})`))
+      }
     })
-    xhr.addEventListener('error', () => reject(new Error('Network error during upload')))
+    xhr.addEventListener('error', () => {
+      console.error('Network error during upload', { url, status: xhr.status, readyState: xhr.readyState })
+      reject(new Error('Network error during upload'))
+    })
     xhr.addEventListener('abort', () => reject(new Error('Upload cancelled')))
     xhr.send(file)
   })
@@ -112,32 +138,34 @@ export function uploadFiles(
 
     for (const file of files) {
       const contentType = file.type || 'application/octet-stream'
-      const signedRes = await fetch(`${API_BASE}/upload-url`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: file.name, contentType }),
-      })
-      if (!signedRes.ok) throw new Error(await readError(signedRes, `Failed to create upload URL (${signedRes.status})`))
-      const signed = (await signedRes.json()) as UploadUrlResponse
+      let signed: UploadUrlResponse
+      try {
+        const signedRes = await axios.post<UploadUrlResponse>(`${API_BASE}/upload-url`, {
+          name: file.name,
+          contentType,
+        })
+        signed = signedRes.data
+      } catch (error) {
+        throw new Error(apiErrorMessage(error, 'Failed to create upload URL'))
+      }
 
       await putToSignedUrl(signed.url, file, contentType, (loaded) => {
         onProgress(Math.min(100, Math.round(((uploaded + loaded) / total) * 100)))
       })
       uploaded += file.size
 
-      const createdRes = await fetch(API_BASE, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      try {
+        const createdRes = await axios.post<GalleryItem>(API_BASE, {
           key: signed.key,
           name: file.name,
           size: file.size,
           type: contentType,
           status: 'active',
-        }),
-      })
-      if (!createdRes.ok) throw new Error(await readError(createdRes, `Failed to save media (${createdRes.status})`))
-      items.push(toMediaItem((await createdRes.json()) as GalleryItem))
+        })
+        items.push(toMediaItem(createdRes.data))
+      } catch (error) {
+        throw new Error(apiErrorMessage(error, 'Failed to save media'))
+      }
     }
 
     onProgress(100)

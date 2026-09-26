@@ -19,6 +19,7 @@ export const getListMediaGallery = async (req: Request, res: Response) => {
     }
     catch (err) {
         res.status(500).json({ error: 'Failed to retrieve media gallery items' });
+        console.error('Error retrieving media gallery items:', err);
     }
 }
 
