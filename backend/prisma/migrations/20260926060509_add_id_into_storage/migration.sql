@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Storage" ALTER COLUMN "id" DROP DEFAULT;

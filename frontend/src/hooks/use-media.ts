@@ -27,9 +27,13 @@ export function useMedia() {
     setItems((prev) => prev.filter((item) => item.id !== id))
   }, [])
 
+  const replace = useCallback((updated: MediaItem) => {
+    setItems((prev) => prev.map((item) => (item.id === updated.id ? updated : item)))
+  }, [])
+
   const add = useCallback((newItems: MediaItem[]) => {
     setItems((prev) => [...newItems, ...prev])
   }, [])
 
-  return { items, loading, error, reload, remove, add }
+  return { items, loading, error, reload, remove, add, replace }
 }
