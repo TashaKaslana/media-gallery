@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { SearchIcon, UploadIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -65,10 +66,10 @@ export default function GalleryPage() {
           </p>
         </div>
         <Button asChild>
-          <a href="/upload">
+          <Link to="/upload">
             <UploadIcon />
             Upload media
-          </a>
+          </Link>
         </Button>
       </div>
 
