@@ -4,16 +4,7 @@ import type { MediaItem, MediaKind, UploadResponse } from '@/types'
 const API_ORIGIN = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/+$/, '')
 const API_BASE = `${API_ORIGIN}/api/gallerys`
 
-interface StoredMediaRecord {
-  id: string
-  name: string
-  mimeType: string
-  kind: MediaKind
-  size: number
-  createdAt: string
-  expiresAt: number // Thời gian hết hạn (5 phút)
-  blob: Blob
-}
+export const apiOrigin = API_ORIGIN
 
 interface GalleryItem {
   id: string
@@ -36,77 +27,7 @@ export function resolveMediaUrl(pathOrUrl: string): string {
   if (/^[a-z][a-z\d+.-]*:\/\//i.test(pathOrUrl) || pathOrUrl.startsWith('data:')) {
     return pathOrUrl
   }
-  if (name.endsWith('.mp4') || name.endsWith('.mov') || name.endsWith('.avi') || name.endsWith('.mkv') || name.endsWith('.webm')) {
-    return 'video'
-  }
-  if (name.endsWith('.jpg') || name.endsWith('.jpeg') || name.endsWith('.png') || name.endsWith('.gif') || name.endsWith('.webp') || name.endsWith('.svg')) {
-    return 'image'
-  }
-
-  // 2. Dự phòng kiểm tra theo MIME type của trình duyệt
-  if (type.startsWith('audio/')) return 'audio'
-  if (type.startsWith('video/')) return 'video'
-  if (type.startsWith('image/')) return 'image'
-
-  return 'file'
-}
-
-function createId(file: File): string {
-  const safeName = file.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
-  return `${Date.now()}-${crypto.randomUUID()}-${safeName || 'file'}`
-}
-
-function getObjectUrl(record: StoredMediaRecord): string {
-  const now = Date.now()
-  // Nếu đã quá 5 phút thì không cấp URL nữa (hết hạn)
-  if (now > record.expiresAt) {
-    return ''
-  }
-
-  const existing = objectUrlCache.get(record.id)
-  if (existing) return existing
-
-  const url = URL.createObjectURL(record.blob)
-  objectUrlCache.set(record.id, url)
-  return url
-}
-
-function toMediaItem(record: StoredMediaRecord): MediaItem {
-  const isExpired = Date.now() > record.expiresAt
-  const localUrl = isExpired ? '' : getObjectUrl(record)
-  const typeLabel = record.mimeType || 'application/octet-stream'
-
-  return {
-    id: record.id,
-    name: record.name,
-    mimeType: record.mimeType,
-    kind: record.kind,
-    size: record.size,
-    createdAt: record.createdAt,
-    thumbnailable: record.kind === 'image' && !isExpired,
-    fileUrl: localUrl,
-    thumbnailUrl: localUrl,
-    metadata: {
-      kind: record.kind,
-      summary: {
-        size: record.size,
-      },
-      details: [
-        { label: 'Tên tệp', value: record.name },
-        { label: 'Loại tệp', value: typeLabel },
-        { label: 'Trạng thái Link', value: isExpired ? 'Hết hạn (Expired - Quá 5 phút)' : 'Đang hoạt động (Signed - Dưới 5 phút)' },
-        { label: 'Nguồn lưu trữ', value: 'Local browser storage' },
-      ],
-    },
-  }
-}
-
-function wait(ms: number) {
-  return new Promise((resolve) => window.setTimeout(resolve, ms))
-}
-
-export function resolveMediaUrl(pathOrUrl: string): string {
-  return pathOrUrl || ''
+  return `${API_ORIGIN}${pathOrUrl.startsWith('/') ? '' : '/'}${pathOrUrl}`
 }
 
 function kindFromType(type: string): MediaKind {
@@ -215,7 +136,7 @@ function putToSignedUrl(
   })
 }
 
-export async function uploadFiles(
+export function uploadFiles(
   files: File[],
   onProgress: (percent: number) => void,
 ): Promise<UploadResponse> {

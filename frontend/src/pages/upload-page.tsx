@@ -161,9 +161,6 @@ export default function UploadPage() {
                       <span>{formatBytes(item.size)}</span>
                     </p>
                   </div>
-                  <Button variant="outline" size="sm" asChild>
-                    <a href={`/?item=${item.id}`}>Xem</a>
-                  </Button>
                 </CardContent>
               </Card>
             ))}
