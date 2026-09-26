@@ -13,7 +13,7 @@ export function useMedia() {
     try {
       setItems(await getMedia())
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load media')
+      setError(err instanceof Error ? err.message : 'Không thể tải thư viện phương tiện')
     } finally {
       setLoading(false)
     }
