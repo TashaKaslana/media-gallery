@@ -25,7 +25,7 @@ const KIND_FILTER_LABELS: Record<KindFilter, string> = {
 }
 
 export default function GalleryPage() {
-  const { items, loading, error, remove, reload } = useMedia()
+  const { items, loading, error, remove, reload, replace } = useMedia()
   const [query, setQuery] = useState('')
   const [kind, setKind] = useState<KindFilter>('all')
   const [selected, setSelected] = useState<MediaItem | null>(null)
@@ -129,6 +129,10 @@ export default function GalleryPage() {
         }}
         onDeleted={() => {
           remove(selected!.id)
+        }}
+        onRenamed={(updated) => {
+          replace(updated)
+          setSelected(updated)
         }}
       />
     </div>

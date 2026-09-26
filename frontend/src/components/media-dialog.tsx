@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Badge } from '@/components/ui/badge'
@@ -14,7 +15,7 @@ import {
 } from '@/components/ui/dialog'
 import { KindIcon, KIND_LABELS } from '@/components/kind'
 import { formatBitrate, formatBytes, formatDateTime, formatDuration } from '@/lib/format'
-import { deleteMedia, resolveMediaUrl } from '@/lib/api'
+import { deleteMedia, resolveMediaUrl, updateMedia } from '@/lib/api'
 import type { MediaItem } from '@/types'
 
 function Preview({ item }: { item: MediaItem }) {
@@ -46,13 +47,40 @@ export function MediaDialog({
   open,
   onOpenChange,
   onDeleted,
+  onRenamed,
 }: {
   item: MediaItem | null
   open: boolean
   onOpenChange: (open: boolean) => void
   onDeleted: (item: MediaItem) => void
+  onRenamed: (item: MediaItem) => void
 }) {
   const [deleting, setDeleting] = useState(false)
+  const [renaming, setRenaming] = useState(false)
+  const [draft, setDraft] = useState('')
+  const [saving, setSaving] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const savingRef = useRef(false)
+  const closingRef = useRef(false)
+  const itemKey = item ? `${item.id}:${item.name}` : ''
+  const [syncedKey, setSyncedKey] = useState(itemKey)
+
+  if (itemKey !== syncedKey) {
+    setSyncedKey(itemKey)
+    setRenaming(false)
+    setDraft(item?.name ?? '')
+    setSaving(false)
+  }
+
+  useEffect(() => {
+    if (!renaming) {
+      closingRef.current = false
+      return
+    }
+    inputRef.current?.focus()
+    inputRef.current?.select()
+  }, [renaming])
+
   if (!item) return null
 
   const summary = item.metadata.summary
@@ -72,6 +100,36 @@ export function MediaDialog({
     pushRow(detail.label, detail.value)
   }
 
+  const cancelRename = () => {
+    closingRef.current = true
+    setDraft(item.name)
+    setRenaming(false)
+  }
+
+  const saveRename = async () => {
+    if (closingRef.current || savingRef.current || !renaming) return
+    const name = draft.trim()
+    if (!name || name === item.name) {
+      cancelRename()
+      return
+    }
+    savingRef.current = true
+    setSaving(true)
+    try {
+      const updated = await updateMedia(item.id, { name })
+      const next = { ...item, name: updated.name }
+      onRenamed(next)
+      closingRef.current = true
+      setRenaming(false)
+      toast.success(`Renamed to "${next.name}"`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Rename failed')
+    } finally {
+      savingRef.current = false
+      setSaving(false)
+    }
+  }
+
   const handleDelete = async () => {
     setDeleting(true)
     try {
@@ -87,10 +145,51 @@ export function MediaDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[92dvh] w-full overflow-hidden p-0 sm:max-w-4xl">
+      <DialogContent
+        className="max-h-[92dvh] w-full overflow-hidden p-0 sm:max-w-4xl"
+        onEscapeKeyDown={(e) => {
+          if (!renaming) return
+          e.preventDefault()
+          cancelRename()
+        }}
+      >
         <div className="flex flex-col gap-1 px-6 pt-5">
           <DialogHeader className="gap-0.5">
-            <DialogTitle className="text-lg">{item.name}</DialogTitle>
+            <DialogTitle className="pr-8 text-lg">
+              {renaming ? (
+                <Input
+                  ref={inputRef}
+                  value={draft}
+                  disabled={saving}
+                  aria-label="Rename media"
+                  className="h-8 text-lg font-medium"
+                  onChange={(e) => setDraft(e.target.value)}
+                  onBlur={() => void saveRename()}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      void saveRename()
+                    }
+                    if (e.key === 'Escape') {
+                      e.preventDefault()
+                      cancelRename()
+                    }
+                  }}
+                />
+              ) : (
+                <button
+                  type="button"
+                  title="Rename"
+                  className="max-w-full truncate text-left hover:underline"
+                  onClick={() => {
+                    setDraft(item.name)
+                    setRenaming(true)
+                  }}
+                >
+                  {item.name}
+                </button>
+              )}
+            </DialogTitle>
             <DialogDescription className="flex flex-wrap items-center gap-2">
               <Badge variant="secondary" className="gap-1">
                 <KindIcon kind={item.kind} className="size-3" />

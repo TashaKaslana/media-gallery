@@ -78,6 +78,15 @@ export const getStorageItemList = async (status: string): Promise<StorageItem[]>
     });
 }
 
+export const updateStorageItem = async (id: string, updates: Partial<StorageItem>): Promise<StorageItem | null> => {
+    const updated = await prisma.storage.update({
+        where: { id },
+        data: updates
+    });
+
+    return {...updated, createdAt: updated.createdAt.toISOString(), lastModifiedAt: updated.lastModifiedAt.toISOString() };
+}
+
 
 export const deleteStorageItem = async (id: string) => {
     const item = await prisma.storage.update({

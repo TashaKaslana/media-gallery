@@ -93,6 +93,15 @@ export async function deleteMedia(id: string): Promise<void> {
   }
 }
 
+export async function updateMedia(id: string, updates: Partial<GalleryItem>): Promise<MediaItem> {
+  try {
+    const { data } = await axios.patch<GalleryItem>(`${API_BASE}/${id}`, updates)
+    return toMediaItem(data)
+  } catch (error) {
+    throw new Error(apiErrorMessage(error, 'Update failed'))
+  }
+}
+
 function putToSignedUrl(
   url: string,
   file: File,

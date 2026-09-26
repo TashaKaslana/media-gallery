@@ -1,6 +1,6 @@
 import type { Request, Response } from 'express';
 import { Prisma } from '../generated/prisma/client.js';
-import { addNewStorageItem, createPresignedUpload, deleteStorageItem, getStorageItemList } from '../service/storage_service.js';
+import { addNewStorageItem, createPresignedUpload, deleteStorageItem, getStorageItemList, updateStorageItem } from '../service/storage_service.js';
 
 
 const paramToString = (value: string | string[] | undefined): string =>
@@ -54,6 +54,30 @@ export const createMediaGallery = async (req: Request, res: Response) => {
     }
     catch (err) {
         res.status(500).json({ error: 'Failed to create media gallery item' });
+    }
+}
+
+export const updateGalleryItem = async (req: Request, res: Response) => {
+    try {
+        const id = paramToString(req.params.id);
+        const updates = req.body;
+        
+        if (id === '') {
+            return res.status(400).json({ error: 'Invalid id parameter' });
+        }
+
+        const updatedItem = await updateStorageItem(id, updates);
+        
+        if (!updatedItem) {
+            return res.status(404).json({ error: 'Media gallery item not found' });
+        }
+
+        res.status(200).json(updatedItem);
+    } catch (err) {
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+            return res.status(404).json({ error: 'Media gallery item not found' });
+        }
+        res.status(500).json({ error: 'Failed to update media gallery item' });
     }
 }
 
