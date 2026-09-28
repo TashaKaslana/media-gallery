@@ -20,6 +20,9 @@ console.log("CORS_ORIGIN =", process.env.CORS_ORIGIN);
 app.use(express.json());
 
 app.use('/api/gallerys', galleryRoutes);
+app.use('/health', (req, res) => {
+  res.status(200).json({ status: 'ok' });
+});
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
