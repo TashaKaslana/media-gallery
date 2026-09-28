@@ -10,6 +10,7 @@ import type { S3StorageItem } from "../types/types.js";
 
 const STORAGE_CUSTOM_DOMAIN = process.env.STORAGE_CUSTOM_DOMAIN;
 const preSignedUrlR2Format = `https://${process.env.R2_BUCKET_NAME}.${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`
+const EXPIRE_DURATION = process.env.STORAGE_PRESIGNED_URL_EXPIRE_DURATION ? parseInt(process.env.STORAGE_PRESIGNED_URL_EXPIRE_DURATION) : 60 * 5
 
 export async function uploadFile(
     key: string,
@@ -30,8 +31,6 @@ export async function createUploadUrl(
     key: string,
     contentType: string,
 ) {
-    const expireDuration = 60 * 5
-
     const command = new PutObjectCommand({
         Bucket: process.env.R2_BUCKET_NAME!,
         Key: key,
@@ -39,15 +38,13 @@ export async function createUploadUrl(
     });
 
     return getSignedUrl(s3, command, {
-        expiresIn: expireDuration,
+        expiresIn: EXPIRE_DURATION,
     });
 }
 
 export const createDownloadUrl = async (
     key: string
 ): Promise<string> => {
-    const expireDuration = 60 * 5
-
     const command = new GetObjectCommand({
         Bucket: process.env.R2_BUCKET_NAME,
         Key: key
@@ -56,7 +53,7 @@ export const createDownloadUrl = async (
     const url = await getSignedUrl(
         s3,
         command, {
-            expiresIn: expireDuration
+            expiresIn: EXPIRE_DURATION
         }
     )
 
@@ -79,8 +76,6 @@ export const getStorageList = async (keyList: string[]): Promise<S3StorageItem[]
     if (keyList.length === 0) {
         return [];
     }
-
-    const expireDuration = 60 * 5
 
     const keysRetrivalCommand = new ListObjectsV2Command({
         Bucket: process.env.R2_BUCKET_NAME,
@@ -107,7 +102,7 @@ export const getStorageList = async (keyList: string[]): Promise<S3StorageItem[]
             const url = await getSignedUrl(
                 s3,
                 preSignedCommand, {
-                expiresIn: expireDuration
+                expiresIn: EXPIRE_DURATION
             })
 
             const replacedUrl = replaceR2UrlWithCustomDomain(url)
