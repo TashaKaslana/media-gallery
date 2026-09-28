@@ -15,14 +15,14 @@ concurrency:
 jobs:
   build-backend:
     name: Build backend
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: backend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 26
           cache: npm
@@ -36,14 +36,14 @@ jobs:
 
   build-frontend:
     name: Build frontend
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 26
           cache: npm
@@ -57,7 +57,7 @@ jobs:
   deploy-backend:
     name: Deploy backend to Render
     needs: build-backend
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Trigger Render deploy hook
         env:
@@ -72,7 +72,7 @@ jobs:
   deploy-frontend:
     name: Deploy frontend to Vercel
     needs: build-frontend
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Trigger Vercel deploy hook
         env:
