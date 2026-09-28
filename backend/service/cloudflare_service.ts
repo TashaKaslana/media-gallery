@@ -8,6 +8,9 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { s3 } from "../core/s3_client.js";
 import type { S3StorageItem } from "../types/types.js";
 
+const STORAGE_CUSTOM_DOMAIN = process.env.STORAGE_CUSTOM_DOMAIN;
+const preSignedUrlR2Format = `https://${process.env.R2_BUCKET_NAME}.${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`
+
 export async function uploadFile(
     key: string,
     body: Buffer,
@@ -50,12 +53,15 @@ export const createDownloadUrl = async (
         Key: key
     })
 
-    return getSignedUrl(
+    const url = await getSignedUrl(
         s3,
         command, {
-        expiresIn: expireDuration
-    }
+            expiresIn: expireDuration
+        }
     )
+
+    const replacedUrl = replaceR2UrlWithCustomDomain(url)
+    return replacedUrl
 }
 
 export const deleteStorageItem = async (
@@ -88,6 +94,7 @@ export const getStorageList = async (keyList: string[]): Promise<S3StorageItem[]
 
     const matchingObjects = objects.filter(obj => obj.Key !== undefined && keyList.includes(obj.Key))
 
+
     return await Promise.all(
         matchingObjects.map(async (object) => {
             const key = object.Key!;
@@ -103,9 +110,11 @@ export const getStorageList = async (keyList: string[]): Promise<S3StorageItem[]
                 expiresIn: expireDuration
             })
 
+            const replacedUrl = replaceR2UrlWithCustomDomain(url)
+
             const storageItem: S3StorageItem = {
                 key: key,
-                url: url
+                url: replacedUrl
             }
 
             if (object.Size !== undefined) {
@@ -119,4 +128,23 @@ export const getStorageList = async (keyList: string[]): Promise<S3StorageItem[]
             return storageItem
         })
     )
+}
+
+const replaceR2UrlWithCustomDomain = (url: string): string => {
+    let customDomain = STORAGE_CUSTOM_DOMAIN
+
+    if (!customDomain) {
+        return url;
+    }
+
+    if (!customDomain.startsWith("http://") && !customDomain.startsWith("https://")) {
+        console.warn(`STORAGE_CUSTOM_DOMAIN does not start with http:// or https://. Prepending https:// to the domain.`);
+        customDomain = `https://${customDomain}`;
+    }
+
+    if (!url.startsWith(preSignedUrlR2Format)) {
+        return url;
+    }
+
+    return url.replace(preSignedUrlR2Format, customDomain);
 }
